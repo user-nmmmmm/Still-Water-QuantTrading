@@ -1,0 +1,37 @@
+Backtest Report (回测报告)
+==========================
+
+Configuration (配置信息):
+Days: 1095
+Start: 2018-01-01
+End: 2020-12-31
+Capital: 1000000.0
+Symbols: BTC-USDT, ETH-USDT, BNB-USDT, SOL-USDT
+Source: synthetic
+
+Metrics (核心指标):
+CAGR (年化收益率)                            : 0.2103
+Max Drawdown % (最大回撤率)                  : -0.0522
+Max Drawdown $ (最大回撤金额)                 : -53313.0467
+Avg Monthly Return (月均收益率)              : 0.0162
+Sharpe Ratio (夏普比率)                     : 2.9472
+End Equity (最终净值)                       : 1772089.7571
+Total Return (总收益率)                     : 0.7721
+Total Trades (总交易次数)                    : 77
+Win Rate (胜率)                           : 0.4026
+Profit Factor (盈亏比)                     : 5.3266
+Expectancy (期望值)                        : 8823.6127
+Avg Win (平均盈利)                          : 26982.2727
+Avg Loss (平均亏损)                         : -3413.7451
+Strat_TrendUp_Trades                    : 33
+Strat_TrendUp_WinRate                   : 0.3636
+Strat_TrendUp_ProfitFactor              : 1.1715
+Strat_TrendUp_NetPnL                    : 11813.3720
+Strat_RangeMeanReversion_Trades         : 5
+Strat_RangeMeanReversion_WinRate        : 0.4000
+Strat_RangeMeanReversion_ProfitFactor   : 0.9366
+Strat_RangeMeanReversion_NetPnL         : -707.0952
+Strat_TrendDown_Trades                  : 39
+Strat_TrendDown_WinRate                 : 0.4359
+Strat_TrendDown_ProfitFactor            : 9.6812
+Strat_TrendDown_NetPnL                  : 668311.9032

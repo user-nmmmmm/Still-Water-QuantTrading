@@ -1,0 +1,37 @@
+Backtest Report
+================
+
+Configuration:
+Days: 1460
+Start: 2022-01-01
+End: 2025-12-31
+Capital: 10000.0
+Symbols: BTC-USDT, SOL-USDT, ETH-USDT, SOL-USDT
+Source: synthetic
+
+Metrics:
+CAGR: 0.1121
+MaxDrawdownPct: -0.0743
+MaxDrawdownAmount: -1102.9683
+AvgMonthlyReturn: 0.0091
+SharpeRatio: 1.6726
+EndEquity: 15288.9206
+TotalReturn: 0.5289
+TotalTrades: 93
+WinRate: 0.3871
+ProfitFactor: 2.7561
+Expectancy: 63.2442
+AvgWin: 256.4177
+AvgLoss: -58.7600
+Strat_TrendUp_Trades: 48
+Strat_TrendUp_WinRate: 0.4167
+Strat_TrendUp_ProfitFactor: 4.2907
+Strat_TrendUp_NetPnL: 4031.0526
+Strat_RangeMeanReversion_Trades: 11
+Strat_RangeMeanReversion_WinRate: 0.4545
+Strat_RangeMeanReversion_ProfitFactor: 0.9443
+Strat_RangeMeanReversion_NetPnL: -57.0537
+Strat_TrendDown_Trades: 34
+Strat_TrendDown_WinRate: 0.3235
+Strat_TrendDown_ProfitFactor: 2.7336
+Strat_TrendDown_NetPnL: 1907.7161
