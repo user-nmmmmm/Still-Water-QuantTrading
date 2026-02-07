@@ -284,23 +284,53 @@ class ReportGenerator:
 
         path = os.path.join(self.output_dir, "report.txt")
         with open(path, "w", encoding="utf-8") as f:
-            f.write("Backtest Report (回测报告)\n")
+            f.write("Backtest Results (回测结果)\n")
             f.write("==========================\n\n")
 
             if metadata:
                 f.write("Configuration (配置信息):\n")
                 for k, v in metadata.items():
                     f.write(f"{k}: {v}\n")
-                f.write("\nMetrics (核心指标):\n")
+                f.write("\n")
 
+            f.write("Metrics (核心指标):\n")
+            f.write("-----------------\n")
             for k, v in metrics.items():
                 # Handle strategy specific metrics dynamically
                 display_key = METRIC_NAMES.get(k, k)
 
                 if isinstance(v, float):
-                    f.write(f"{display_key:<40}: {v:.4f}\n")
+                    f.write(f"{display_key:<45}: {v:.4f}\n")
                 else:
-                    f.write(f"{display_key:<40}: {v}\n")
+                    f.write(f"{display_key:<45}: {v}\n")
+
+            f.write("\n")
+            f.write("File Descriptions (文件说明):\n")
+            f.write("===========================\n")
+
+            f.write("1. report.txt (回测报告概要)\n")
+            f.write("   - Contains summary metrics and configuration parameters.\n")
+            f.write("   - 包含核心指标汇总与回测参数配置。\n\n")
+
+            f.write("2. equity.csv (净值曲线数据)\n")
+            f.write("   - timestamp: Date (日期)\n")
+            f.write("   - equity: Total Account Equity (总权益 = 现金 + 持仓市值)\n")
+            f.write("   - cash: Available Cash (可用现金)\n\n")
+
+            f.write("3. trades.csv (交易明细记录 - Execution Log)\n")
+            f.write("   - signal_time: Time signal was generated (信号产生时间)\n")
+            f.write("   - fill_time: Time order was filled (成交时间)\n")
+            f.write("   - symbol: Trading Pair (交易标的)\n")
+            f.write("   - side: buy/sell/short/cover (交易方向)\n")
+            f.write("   - qty: Executed Quantity (成交数量)\n")
+            f.write("   - fill_price: Executed Price (成交价格)\n")
+            f.write("   - commission: Transaction Fee (手续费)\n")
+            f.write("   - slip: Slippage Value (滑点金额)\n")
+            f.write("   - slip_dir: Slippage Direction (滑点方向)\n")
+            f.write("   - strategy_id: Strategy Name (策略名称)\n")
+            f.write(
+                "   - exit_reason: Reason for order (成交原因: signal/stop/takeprofit)\n"
+            )
 
     def _plot_equity(self, equity_curve: pd.DataFrame):
         try:
