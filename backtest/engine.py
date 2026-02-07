@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Any
-from core.data import DataHandler
 from core.indicators import Indicators
 from core.state import MarketStateMachine, MarketState
 from core.portfolio import Portfolio
@@ -22,6 +21,46 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.slippage = slippage
         self.random_slip = random_slip
+
+    @staticmethod
+    def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize index type/tz and remove duplicated timestamps."""
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        normalized = df.copy()
+        normalized.index = pd.to_datetime(normalized.index, errors="coerce")
+        valid_mask = ~pd.isna(normalized.index)
+        normalized = normalized.loc[valid_mask].copy()
+
+        if normalized.empty:
+            return normalized
+
+        idx = normalized.index
+        if idx.tz is not None:
+            idx = idx.tz_convert("UTC").tz_localize(None)
+        normalized.index = idx
+
+        normalized = normalized[~normalized.index.duplicated(keep="last")]
+        normalized = normalized.sort_index()
+        return normalized
+
+    @staticmethod
+    def _looks_daily_or_slower(indices: List[pd.DatetimeIndex]) -> bool:
+        """Heuristic: detect daily/weekly-like bars to allow date-based alignment."""
+        for idx in indices:
+            if len(idx) < 2:
+                continue
+
+            diffs = idx.to_series().diff().dropna()
+            if diffs.empty:
+                continue
+
+            median_gap_seconds = diffs.dt.total_seconds().median()
+            if pd.notna(median_gap_seconds) and median_gap_seconds < 23 * 3600:
+                return False
+
+        return True
 
     def run(self, data_map: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
         """
@@ -47,29 +86,62 @@ class BacktestEngine:
         if not data_map:
             return {}
 
-        common_index = None
-        for df in data_map.values():
-            # Ensure index is DatetimeIndex
-            if not isinstance(df.index, pd.DatetimeIndex):
-                try:
-                    df.index = pd.to_datetime(df.index)
-                except:
-                    pass
+        normalized_data_map: Dict[str, pd.DataFrame] = {}
+        for symbol, df in data_map.items():
+            normalized_df = self._prepare_dataframe(df)
+            if normalized_df.empty:
+                print(f"Skipping {symbol}: empty/invalid dataframe after normalization.")
+                continue
+            normalized_data_map[symbol] = normalized_df
 
+        if not normalized_data_map:
+            print("No valid symbol data available after normalization.")
+            return {"trades": [], "equity_curve": pd.DataFrame()}
+
+        common_index = None
+        for df in normalized_data_map.values():
             if common_index is None:
                 common_index = df.index
             else:
                 common_index = common_index.intersection(df.index)
 
+        # Fallback for daily bars from heterogeneous providers/timezones.
+        if common_index is None or len(common_index) == 0:
+            indices = [df.index for df in normalized_data_map.values()]
+            if self._looks_daily_or_slower(indices):
+                common_dates = None
+                for idx in indices:
+                    date_idx = pd.DatetimeIndex(idx.normalize().unique())
+                    if common_dates is None:
+                        common_dates = date_idx
+                    else:
+                        common_dates = common_dates.intersection(date_idx)
+
+                if common_dates is not None and len(common_dates) > 0:
+                    common_index = common_dates.sort_values()
+                    remapped_data_map: Dict[str, pd.DataFrame] = {}
+
+                    for symbol, df in normalized_data_map.items():
+                        daily_df = df.groupby(df.index.normalize()).last()
+                        daily_df.index = pd.DatetimeIndex(daily_df.index)
+                        remapped_data_map[symbol] = daily_df
+
+                    normalized_data_map = remapped_data_map
+                    print("No exact timestamp overlap; aligned symbols by calendar date.")
+
         if common_index is None or len(common_index) == 0:
             print("No common timeframe found for symbols.")
+            for symbol, df in normalized_data_map.items():
+                print(
+                    f"{symbol}: {df.index.min()} -> {df.index.max()} ({len(df)} bars)"
+                )
             return {"trades": [], "equity_curve": pd.DataFrame()}
 
         common_index = common_index.sort_values()
 
         # Reindex and Calculate Indicators
         processed_data = {}
-        for symbol, df in data_map.items():
+        for symbol, df in normalized_data_map.items():
             # Reindex
             df_aligned = df.reindex(common_index).copy()
 
