@@ -1,75 +1,17 @@
 import sys
 import os
+import argparse
+import random
+import numpy as np
 import pandas as pd
-import yfinance as yf
 from datetime import datetime, timedelta
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from core.data_fetcher import DataFetcher
 from backtest.engine import BacktestEngine
 from backtest.reporting import ReportGenerator
-
-import numpy as np
-
-
-def generate_scenario_data(
-    symbol: str, start_date: datetime, end_date: datetime
-) -> pd.DataFrame:
-    print(f"Generating scenario-based data for {symbol}...")
-
-    dates = pd.date_range(start=start_date, end=end_date, freq="D")
-    days = len(dates)
-
-    if days < 10:
-        print("Warning: Date range too short for meaningful scenario generation.")
-
-    # Split into 3 phases: Trend Up, Sideways, Trend Down
-    phase_len = days // 3
-
-    # 1. Trend Up (Strong upward drift, low volatility)
-    # Drift 0.5% per day, Vol 1%
-    phase1_returns = np.random.normal(0.005, 0.01, size=phase_len)
-
-    # 2. Sideways (Zero drift, higher volatility)
-    # Drift 0%, Vol 2%
-    phase2_returns = np.random.normal(0.0, 0.02, size=phase_len)
-
-    # 3. Trend Down (Strong downward drift, high volatility)
-    # Drift -0.5% per day, Vol 1.5%
-    remaining = days - (phase_len * 2)
-    phase3_returns = np.random.normal(-0.005, 0.015, size=remaining)
-
-    returns = np.concatenate([phase1_returns, phase2_returns, phase3_returns])
-
-    start_price = 10000.0 if "BTC" in symbol else 2000.0
-    price_path = start_price * np.exp(np.cumsum(returns))
-
-    # OHLC
-    # High/Low relative to Close
-    # Add some noise to High/Low to ensure ATR is not zero
-    high = price_path * (1 + np.abs(np.random.normal(0, 0.01, size=days)))
-    low = price_path * (1 - np.abs(np.random.normal(0, 0.01, size=days)))
-    close = price_path
-    open_p = price_path * (1 + np.random.normal(0, 0.005, size=days))
-
-    # Fix High/Low consistency
-    high = np.maximum(high, np.maximum(open_p, close))
-    low = np.minimum(low, np.minimum(open_p, close))
-
-    data = {
-        "open": open_p,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": np.random.randint(1000, 100000, size=days),
-    }
-
-    df = pd.DataFrame(data, index=dates)
-    return df
-
-
-from core.data_fetcher import DataFetcher
 
 
 def get_data(
@@ -78,17 +20,12 @@ def get_data(
     fetcher = DataFetcher()
 
     if source == "ccxt":
-        # CCXT typically uses limits, so we estimate limit from days
-        return fetcher.fetch_ccxt(symbol, limit=days)
+        return fetcher.fetch_ccxt(symbol, limit=days, start_date=start, end_date=end)
     elif source == "yahoo":
         return fetcher.fetch_yahoo(symbol, start, end)
     else:
-        s_dt = datetime.strptime(start, "%Y-%m-%d")
-        e_dt = datetime.strptime(end, "%Y-%m-%d")
-        return generate_scenario_data(symbol, s_dt, e_dt)
-
-
-import argparse
+        # Synthetic / Scenario
+        return fetcher.generate_scenario(symbol, start, end)
 
 
 def main():
@@ -138,8 +75,6 @@ def main():
 
     if args.seed is not None:
         np.random.seed(args.seed)
-        import random
-
         random.seed(args.seed)
         print(f"Random seed set to {args.seed}")
 
