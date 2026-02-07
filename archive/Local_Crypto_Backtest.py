@@ -13,7 +13,7 @@ plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 
 # ================= 配置区域 =================
 # 代理设置 (加速访问 Binance)
-PROXY_URL = 'http://127.0.0.1:7897'  # 如无本地代理，可将 USE_PROXY 设为 False
+PROXY_URL = os.getenv('HTTP_PROXY', '')  # 优先读取环境变量，或者留空
 USE_PROXY = True
 
 # 初始资金 (USDT)
