@@ -1,4 +1,5 @@
 # QuantTrading 量化交易系统
+## 一个兴趣项目，不构成任何投资建议
 
 ## 项目简介
 
@@ -72,10 +73,10 @@ pip install -r requirements.txt
 
 ### 3. 代理配置 (可选)
 如果在中国大陆地区访问币安或美股数据，建议配置代理。
-在 `core/data_fetcher.py` 或环境变量中设置代理，默认支持 HTTP 代理：
+可以在代码中传入 `proxy_url` 或直接设置环境变量：
 ```python
-# 示例：main.py 中已集成代理配置
-proxies = {'http': 'http://127.0.0.1:7897', 'https': 'http://127.0.0.1:7897'}
+# 示例：初始化时指定代理
+fetcher = DataFetcher(proxy_url="http://127.0.0.1:7897")
 ```
 
 ## 使用指南
