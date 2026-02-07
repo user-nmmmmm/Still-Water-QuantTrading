@@ -139,7 +139,7 @@ QauntTrading/
 输出目录示例：
 ```text
 reports/
-└── 20260207_154008_1825d_4Syms_Ret-0.0pct/
+└── example report
     ├── report.txt               # 配置与指标摘要
     ├── equity.csv               # 净值时间序列
     ├── trades.csv               # 成交明细（有交易时生成）
