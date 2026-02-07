@@ -117,7 +117,31 @@ def main():
         choices=["synthetic", "yahoo", "ccxt"],
         help="Data source",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for reproducibility (default: 42)",
+    )
+    parser.add_argument(
+        "--slippage",
+        type=float,
+        default=0.0,
+        help="Slippage rate (e.g. 0.001 for 0.1%). If random_slip is True, this is max slippage.",
+    )
+    parser.add_argument(
+        "--random_slip",
+        action="store_true",
+        help="Enable random slippage (uniform distribution from 0 to --slippage)",
+    )
     args = parser.parse_args()
+
+    if args.seed is not None:
+        np.random.seed(args.seed)
+        import random
+
+        random.seed(args.seed)
+        print(f"Random seed set to {args.seed}")
 
     print("Starting Quantitative Trading System...")
     print(f"Current Working Directory: {os.getcwd()}")
@@ -143,7 +167,7 @@ def main():
         )
 
     print(
-        f"Config: Capital={args.capital}, Symbols={args.symbols}, Source={args.source}"
+        f"Config: Capital={args.capital}, Symbols={args.symbols}, Source={args.source}, Slippage={args.slippage}, RandomSlip={args.random_slip}"
     )
 
     # 1. Fetch Data
@@ -174,7 +198,11 @@ def main():
 
     # 2. Run Backtest
     print("\nInitializing Backtest Engine...")
-    engine = BacktestEngine(initial_capital=args.capital)
+    engine = BacktestEngine(
+        initial_capital=args.capital,
+        slippage=args.slippage,
+        random_slip=args.random_slip,
+    )
 
     print("Running Backtest...")
     results = engine.run(data_map)

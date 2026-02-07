@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Set, Dict, Any, Optional
 import pandas as pd
+import numpy as np
 from core.state import MarketState
 from core.portfolio import Portfolio
 from core.broker import Broker
@@ -48,6 +49,8 @@ class Strategy(ABC):
             exit_signal = self.should_exit(symbol, i, df, state, portfolio)
             if exit_signal:
                 action = exit_signal['action'] # 'sell' or 'cover'
+                reason = exit_signal.get('reason', 'signal')
+                
                 # Execute Exit
                 # Calculate qty to close (all)
                 close_qty = abs(qty)
@@ -56,10 +59,10 @@ class Strategy(ABC):
                 # If action matches position direction (sell for long, cover for short)
                 if (qty > 0 and action == 'sell') or (qty < 0 and action == 'cover'):
                     timestamp = df.index[i]
-                    result = broker.execute_order(symbol, action, close_qty, current_price, timestamp=timestamp, strategy_id=self.name)
-                    if result['status'] == 'filled':
-                        # Clear context
-                        self.context[symbol] = {}
+                    broker.submit_order(symbol, action, close_qty, current_price, timestamp=timestamp, strategy_id=self.name, exit_reason=reason)
+                    
+                    # Clear context (Optimistic)
+                    self.context[symbol] = {}
                         
         # 2. Check Entry if we don't have a position (or if strategy allows pyramiding, but let's assume 1 pos for now)
         if qty == 0:
@@ -98,16 +101,11 @@ class Strategy(ABC):
                             size = min(size, max_size)
                         
                         timestamp = df.index[i]
-                        result = broker.execute_order(symbol, action, size, current_price, timestamp=timestamp, strategy_id=self.name)
+                        broker.submit_order(symbol, action, size, current_price, timestamp=timestamp, strategy_id=self.name, exit_reason='signal')
                         
-                        if result['status'] == 'filled':
-                            # Initialize context for the new position
-                            ctx = self.get_context(symbol)
-                            ctx['entry_price'] = result['price']
-                            ctx['stop_loss'] = stop_loss
-                            
-                            # Initialize trailing stop if needed (same as stop loss initially)
-                            if action == 'buy':
-                                ctx['trailing_stop'] = stop_loss
-                            else:
-                                ctx['trailing_stop'] = stop_loss # For short, logic might differ but let's init it.
+                        # Initialize Context
+                        self.context[symbol] = {
+                            'stop_loss': stop_loss,
+                            'entry_price': current_price, # Approx
+                            'trailing_stop': -np.inf if action == 'buy' else np.inf # Init trail
+                        }

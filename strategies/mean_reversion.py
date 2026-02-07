@@ -92,12 +92,19 @@ class RangeStrategy(Strategy):
         elif qty < 0 and close <= bb_mid:
             reason = 'Target hit (Mid Band)'
             
-        # 2. Stop Loss (Managed by Base Strategy check mostly, but here we can check explicit logic)
-        # Base Strategy checks against ctx['stop_loss'].
-        # Here we just return action if logic says so.
-        # But wait, Base Strategy on_bar checks stop loss BEFORE calling should_exit? 
-        # No, my implementation in Base calls should_exit FIRST.
-        # So I should check stop loss here too?
+        # 2. Stop Loss
+        stop_loss = ctx.get('stop_loss')
+        if stop_loss is not None:
+            if qty > 0 and close < stop_loss:
+                reason = 'Stop Loss'
+            elif qty < 0 and close > stop_loss:
+                reason = 'Stop Loss'
+                
+        if reason:
+            action = 'sell' if qty > 0 else 'cover'
+            return {'action': action, 'reason': reason}
+            
+        return None
         # Or I can return None and let Base implementation check Stop Loss?
         # My Base implementation:
         # 1. Check Exit (should_exit)

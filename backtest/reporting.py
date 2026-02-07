@@ -98,18 +98,19 @@ class ReportGenerator:
 
         # Group by symbol
         for symbol, group in trades_df.groupby("symbol"):
-            long_stack: List[Tuple[float, float, str]] = []  # (qty, price, strategy_id)
+            long_stack: List[
+                Tuple[float, float, str, float]
+            ] = []  # (qty, price, strategy_id, unit_comm)
             short_stack: List[
-                Tuple[float, float, str]
-            ] = []  # (qty, price, strategy_id)
+                Tuple[float, float, str, float]
+            ] = []  # (qty, price, strategy_id, unit_comm)
 
             for _, row in group.iterrows():
                 side = row["side"]
                 qty = row["qty"]
-                price = row["price"]
-                # commission = row['commission']
-                # For simplicity, we calculate Gross PnL per strategy.
-                # Commissions are global or per execution, hard to split exactly on FIFO fills without more complex logic.
+                price = row["fill_price"]
+                comm = row["commission"]
+                unit_comm = comm / qty if qty > 0 else 0.0
 
                 strategy_id = row.get("strategy_id", "Unknown")
 
@@ -117,53 +118,94 @@ class ReportGenerator:
                     # Check if covering short
                     remaining = qty
                     while remaining > 0 and short_stack:
-                        s_qty, s_price, s_strat = short_stack.pop(0)
+                        s_qty, s_price, s_strat, s_unit_comm = short_stack.pop(0)
                         matched = min(remaining, s_qty)
 
                         # Short PnL: (Entry - Exit) * qty
-                        pnl = (s_price - price) * matched
+                        gross_pnl = (s_price - price) * matched
+                        # Commission: Entry part + Exit part
+                        # Entry part: s_unit_comm * matched
+                        # Exit part: unit_comm * matched
+                        trade_comm = (s_unit_comm + unit_comm) * matched
+                        net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": pnl, "strategy": s_strat})
+                        closed_trades.append({"pnl": net_pnl, "strategy": s_strat})
 
                         remaining -= matched
                         if s_qty > matched:
-                            short_stack.insert(0, (s_qty - matched, s_price, s_strat))
+                            short_stack.insert(
+                                0, (s_qty - matched, s_price, s_strat, s_unit_comm)
+                            )
 
                     if remaining > 0:
-                        long_stack.append((remaining, price, strategy_id))
+                        long_stack.append((remaining, price, strategy_id, unit_comm))
 
                 elif side == "sell":
                     # Close Long
                     remaining = qty
                     while remaining > 0 and long_stack:
-                        l_qty, l_price, l_strat = long_stack.pop(0)
+                        l_qty, l_price, l_strat, l_unit_comm = long_stack.pop(0)
                         matched = min(remaining, l_qty)
 
                         # Long PnL: (Exit - Entry) * qty
-                        pnl = (price - l_price) * matched
+                        gross_pnl = (price - l_price) * matched
+                        trade_comm = (l_unit_comm + unit_comm) * matched
+                        net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": pnl, "strategy": l_strat})
+                        closed_trades.append({"pnl": net_pnl, "strategy": l_strat})
 
                         remaining -= matched
                         if l_qty > matched:
-                            long_stack.insert(0, (l_qty - matched, l_price, l_strat))
+                            long_stack.insert(
+                                0, (l_qty - matched, l_price, l_strat, l_unit_comm)
+                            )
+
+                    if remaining > 0:
+                        short_stack.append((remaining, price, strategy_id, unit_comm))
+
+                # Handle 'short' and 'cover' if they exist separately (Broker uses buy/sell/short/cover?)
+                # Broker uses: buy, sell, short, cover?
+                # Let's check Broker._execute_trade logic.
+                # Broker maps: 'buy' (long open), 'sell' (long close), 'short' (short open), 'cover' (short close).
+                # But reporting.py currently only handles 'buy' and 'sell'.
+                # I should add 'short' and 'cover'.
 
                 elif side == "short":
-                    short_stack.append((qty, price, strategy_id))
+                    # Open Short
+                    remaining = qty
+                    # Should we check for existing longs? (Reversal?)
+                    # For simplicity, assume strict separation or FIFO.
+                    # If we have longs, 'short' usually means 'sell to close' + 'sell to open'?
+                    # But Router sends 'sell' to close long, and 'short' to open short.
+                    # So 'short' should just add to short_stack.
+
+                    # Wait, if we have longs, 'short' command might be error if not flat?
+                    # But assuming Router handles it (Router closes first).
+                    short_stack.append((qty, price, strategy_id, unit_comm))
 
                 elif side == "cover":
+                    # Close Short (Buy to Cover)
+                    # Match against short_stack
                     remaining = qty
                     while remaining > 0 and short_stack:
-                        s_qty, s_price, s_strat = short_stack.pop(0)
+                        s_qty, s_price, s_strat, s_unit_comm = short_stack.pop(0)
                         matched = min(remaining, s_qty)
 
-                        pnl = (s_price - price) * matched
+                        gross_pnl = (s_price - price) * matched
+                        trade_comm = (s_unit_comm + unit_comm) * matched
+                        net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": pnl, "strategy": s_strat})
+                        closed_trades.append({"pnl": net_pnl, "strategy": s_strat})
 
                         remaining -= matched
                         if s_qty > matched:
-                            short_stack.insert(0, (s_qty - matched, s_price, s_strat))
+                            short_stack.insert(
+                                0, (s_qty - matched, s_price, s_strat, s_unit_comm)
+                            )
+
+                    # If remaining > 0, we are buying more than we are short? -> Net Long?
+                    if remaining > 0:
+                        long_stack.append((remaining, price, strategy_id, unit_comm))
 
         if not closed_trades:
             return {"TotalTrades": 0, "WinRate": 0.0, "ProfitFactor": 0.0}

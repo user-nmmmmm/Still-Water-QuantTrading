@@ -97,6 +97,6 @@ class Router:
             # Use Broker to execute closing order
             # We treat this as a forced system exit
             if qty > 0:
-                broker.execute_order(symbol, 'sell', abs(qty), current_price, timestamp=timestamp, strategy_id="Router")
-            else:
-                broker.execute_order(symbol, 'cover', abs(qty), current_price, timestamp=timestamp, strategy_id="Router")
+                broker.submit_order(symbol, 'sell', abs(qty), current_price, timestamp=timestamp, strategy_id="Router", exit_reason="StateSwitch")
+            elif qty < 0:
+                broker.submit_order(symbol, 'cover', abs(qty), current_price, timestamp=timestamp, strategy_id="Router", exit_reason="StateSwitch")
