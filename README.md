@@ -1,198 +1,263 @@
-# QuantTrading 量化交易系统
-## 一个兴趣项目，不构成任何投资建议
+﻿# QuantTrading 量化交易系统
 
-## 项目简介
+> 仅用于策略研究与回测验证，不构成任何投资建议。
 
-**QuantTrading** 是一个模块化、多策略的量化交易系统，旨在适应美股和加密货币市场。该系统基于 Python 开发，采用自定义的轻量级回测引擎，集成了市场状态识别、策略路由、风险管理和工程化回测报告功能。
+## 1. 项目概述
 
-核心设计理念是 **“环境适应策略”**：通过市场状态机（Market State Machine）实时判断当前市场处于上涨趋势、下跌趋势还是震荡区间，并通过策略路由层（Router）动态调度对应的策略模块，实现“牛市吃单、熊市做空、震荡均值回归”的自适应交易。
+`QuantTrading` 是一个基于 Python 的模块化回测系统，核心目标是验证“市场状态识别 + 策略路由 + 风险控制”的组合交易框架。
 
-## 核心特性
+当前代码实现聚焦于：
+- 多标的日线级别回测（统一时间轴）
+- 市场状态机驱动的策略切换（上涨/下跌/震荡）
+- 趋势与均值回归策略并行管理
+- 统一的订单、账户、风控与报告输出
 
--   **多周期架构 (Multi-Timeframe)**:
-    -   **长短周期分离**: 使用 4H/1D 大周期判断市场方向 (UP/DOWN/RANGE)，1H 小周期执行具体交易。
-    -   **严格时间对齐**: 杜绝未来函数，确保小周期只能获取已完成的大周期状态。
--   **多市场适配**: 支持加密货币 (CCXT) 和美股 (YFinance) 数据源，具备代理配置功能。
--   **灵活回测配置**: 支持指定**回测天数**或**具体起止日期**，支持自定义初始资金和交易标的。
--   **市场状态机**: 基于 SMA 和斜率判定市场状态 (TREND_UP, TREND_DOWN, SIDEWAYS, NO_TRADE)，含 3 根 K 线稳定过滤器。
--   **策略路由 (Router)**:
-    -   **互斥执行**: 同一时间只允许一个策略持有仓位。
-    -   **自动清仓**: 状态切换时强制平掉旧策略仓位。
-    -   **冷却机制**: 状态切换后进入冷却期，防止震荡市频繁开仓。
--   **模块化策略**:
-    -   **TrendUp**: 双均线 + 斜率过滤，回踩 SMA30 做多。
-    -   **TrendDown**: 反弹 SMA30 做空 (支持合约空单)。
-    -   **RangeMeanReversion**: 布林带回归策略，含 ATR 波动率过滤和连亏熔断机制。
--   **风险管理**:
-    -   **ATR 止损**: 动态波动率止损。
-    -   **时间止损**: 持仓 N 天无盈利强制离场。
-    -   **资金管理**: 基于账户权益的动态仓位分配，支持杠杆限制 (3x)。
--   **工程化回测与报告**:
-    -   **智能报告命名**: 报告文件夹自动包含关键回测结果（如 `20260206_144428_364d_2Syms_Ret14.1pct`），一目了然。
-    -   **配置持久化**: `report.txt` 自动记录运行参数（日期范围、资金、标的等），便于复盘。
-    -   生成专业级回测报告 (CAGR, Sharpe, MaxDrawdown, Expectancy)。
-    -   自动绘制净值曲线图 (Equity Curve)。
+主入口：`main.py`
 
-## 目录结构
+## 2. 快速开始
 
-```text
-D:\QauntTrading
-├── core/                   # 核心基础模块
-│   ├── data.py             # 数据标准化与验证
-│   ├── data_fetcher.py     # 数据获取 (CCXT/YFinance/Synthetic)
-│   ├── indicators.py       # 技术指标计算 (SMA, ATR, BBANDS 等)
-│   ├── state.py            # 市场状态机实现
-│   ├── broker.py           # 模拟交易所与订单执行
-│   ├── portfolio.py        # 账户与持仓管理
-│   └── risk.py             # 风控与仓位计算
-├── strategies/             # 策略实现模块
-│   ├── base.py             # 策略基类
-│   ├── trend_following.py  # 趋势策略 (Up/Down)
-│   └── mean_reversion.py   # 震荡回归策略
-├── router/                 # 策略路由层
-│   └── router.py           # 路由逻辑与互斥控制
-├── backtest/               # 回测引擎
-│   ├── engine.py           # 回测主循环
-│   └── reporting.py        # 报告生成与指标计算
-├── reports/                # 回测结果输出目录
-├── archive/                # 归档文件（旧脚本/临时文件）
-├── main.py                 # 系统入口脚本
-├── requirements.txt        # 依赖包列表
-└── verify_router.py        # 路由逻辑验证脚本
-```
+### 2.1 环境要求
 
-## 安装与配置
+- Python 3.8+
+- 建议使用虚拟环境
 
-### 1. 环境准备
-确保已安装 Python 3.8 或以上版本。
+### 2.2 安装依赖
 
-### 2. 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 代理配置 (可选)
-如果在中国大陆地区访问币安或美股数据，建议配置代理。
-可以在代码中传入 `proxy_url` 或直接设置环境变量：
-```python
-# 示例：初始化时指定代理
-fetcher = DataFetcher(proxy_url="http://127.0.0.1:7897")
-```
+依赖见 `requirements.txt`：`pandas`、`numpy`、`matplotlib`、`yfinance`、`ccxt`、`requests`。
 
-## 使用指南
+### 2.3 最小可运行示例（推荐先用合成数据）
 
-通过 `main.py` 启动回测，支持灵活的命令行参数配置。
-
-### 1. 快速开始 (默认配置)
 ```bash
-python main.py
+python main.py --source synthetic --days 365 --capital 10000 --symbols BTC-USD ETH-USD
 ```
 
-### 2. 指定日期范围 (推荐)
-精确回测指定时间段的行情（格式：YYYY-MM-DD）：
+运行完成后，会在 `reports/` 下生成一份报告目录。
+
+## 3. 命令行参数
+
+`main.py` 支持以下参数：
+
+- `--days`：回测天数，默认 `365`
+- `--start`：开始日期，格式 `YYYY-MM-DD`
+- `--end`：结束日期，格式 `YYYY-MM-DD`
+- `--capital`：初始资金，默认 `1000.0`
+- `--symbols`：标的列表，空格分隔，默认 `BTC-USD ETH-USD`
+- `--source`：数据源，`synthetic | yahoo | ccxt`，默认 `synthetic`
+- `--seed`：随机种子，默认 `42`
+- `--slippage`：滑点率（如 `0.001` 表示 0.1%）
+- `--random_slip`：启用随机滑点（区间 `[0, slippage]`）
+
+参数优先级说明：
+- 同时提供 `--start` 和 `--end` 时，系统按日期区间回测，并自动覆盖 `--days`。
+- 未提供日期区间时，系统按“当前时间向前 `--days` 天”计算窗口。
+
+示例：
+
 ```bash
-python main.py --start 2025-01-01 --end 2025-12-31
+python main.py --start 2025-01-01 --end 2025-12-31 --source yahoo --symbols AAPL MSFT --capital 50000
 ```
 
-### 3. 指定回测天数
-回测过去 N 天的行情：
 ```bash
-python main.py --days 365
+python main.py --source ccxt --days 180 --symbols BTC-USD ETH-USD --slippage 0.001 --random_slip
 ```
 
-### 4. 自定义资金与标的
-```bash
-# 初始本金 50000 U，交易 BTC 和 SOL
-python main.py --capital 50000 --symbols BTC-USD SOL-USD --start 2025-01-01 --end 2025-06-30
+## 4. 回测执行流程（按代码实现）
+
+回测核心在 `backtest/engine.py`，执行顺序如下：
+
+1. 初始化组件：`Portfolio`、`Broker`、`RiskManager`、`MarketStateMachine`
+2. 初始化策略与路由：
+   - `TrendUpStrategy`
+   - `TrendDownStrategy`
+   - `RangeStrategy`（在路由中命名为 `RangeMeanReversion`）
+3. 对所有标的数据取时间索引交集，形成统一时间轴
+4. 为每个标的补齐数据并计算指标（SMA/ATR/BBANDS/ADX）
+5. 从第 50 根 K 线开始进入交易循环（前 50 根用于指标预热）
+6. 每根 K 线先处理挂单（按当根 `open` 成交），再进行策略路由与信号生成
+7. 记录净值曲线，最后输出交易记录和报告
+
+## 5. 数据源与数据处理
+
+数据获取在 `core/data_fetcher.py`：
+
+- `synthetic`：合成场景数据（上涨、震荡、下跌三阶段）
+- `yahoo`：通过 `yfinance`
+- `ccxt`：通过 `ccxt`（Binance）
+
+实现细节：
+- `ccxt` 输入若为 `BTC-USD` 风格，会自动转换为 `BTC/USDT`
+- 列名统一为小写 `open/high/low/close/volume`
+- `DataFetcher` 默认会设置代理：`http://127.0.0.1:7897`
+
+## 6. 策略与状态机
+
+### 6.1 市场状态机（`core/state.py`）
+
+状态定义：
+- `TREND_UP`
+- `TREND_DOWN`
+- `SIDEWAYS`
+- `NO_TRADE`（当前路由逻辑不会主动映射到策略）
+
+判定规则：
+- `TREND_UP`：`close > SMA_30` 且 `SMA_30` 斜率 > 0
+- `TREND_DOWN`：`close < SMA_30` 且 `SMA_30` 斜率 < 0
+- 其他：`SIDEWAYS`
+
+稳定过滤：
+- 新状态连续出现达到 `stability_period`（默认 3）后才切换，减少抖动。
+
+### 6.2 路由机制（`router/router.py`）
+
+- 状态到策略映射：
+  - `TREND_UP -> TrendUp`
+  - `TREND_DOWN -> TrendDown`
+  - `SIDEWAYS -> RangeMeanReversion`
+- 当状态切换时：
+  - 清理旧策略上下文
+  - 若有持仓，提交平仓单
+  - 进入冷却期（默认 `cooldown_bars=3`）
+
+### 6.3 趋势上行策略（`TrendUpStrategy`）
+
+入场：
+- `close <= SMA_30 * 1.005`
+- `SMA_30` 斜率 > 0
+- `SMA_10 > SMA_30`
+
+初始止损：
+- `stop_loss = close - 2 * ATR_14`
+
+出场：
+- `close < SMA_30`
+- 或状态不再属于 `TREND_UP`
+- 或触发 `max(stop_loss, trailing_stop)`
+
+### 6.4 趋势下行策略（`TrendDownStrategy`）
+
+入场：
+- `0.99 * SMA_30 <= close <= SMA_30`
+- `SMA_30` 斜率 < 0
+
+初始止损：
+- `stop_loss = close + 2 * ATR_14`
+
+出场：
+- `close > SMA_30 * 1.005`
+- 或状态不再属于 `TREND_DOWN`
+- 或触发 `min(stop_loss, trailing_stop)`
+
+### 6.5 震荡均值回归策略（`RangeStrategy`）
+
+入场：
+- `low <= BB_LOWER` 开多
+- `high >= BB_UPPER` 开空
+- 且满足波动率过滤：`ATR_14 / close <= 0.03`
+
+出场：
+- 多头：`close >= BB_MIDDLE`
+- 空头：`close <= BB_MIDDLE`
+- 或触发止损
+
+额外保护：
+- 连续 3 次亏损后，进入 24 根 K 线冷却期（策略内熔断）。
+
+## 7. 风控与成交模型
+
+### 7.1 仓位计算（`core/risk.py`）
+
+固定风险比例模型：
+
+`qty = (equity * risk_per_trade) / abs(entry - stop_loss)`
+
+默认 `risk_per_trade = 1%`。
+
+### 7.2 杠杆约束（`strategies/base.py`）
+
+下单前检查组合杠杆，目标不超过 3x；若超限会自动缩小下单数量。
+
+### 7.3 成交规则（`core/broker.py`）
+
+- 信号先入队列（`submit_order`）
+- 在下一根 K 线处理（`process_orders`），按该根 `open` 成交
+- 支持固定滑点与随机滑点
+- 默认手续费：`0.1%`（双边）
+
+## 8. 报告输出
+
+报告生成在 `backtest/reporting.py`，输出目录格式：
+
+`YYYYMMDD_HHMMSS_{Days}d_{N}Syms_Ret{X}pct`
+
+输出文件：
+- `report.txt`：配置与核心指标
+- `equity.csv`：净值序列
+- `trades.csv`：成交明细（若有交易）
+- `equity.png`：净值、回撤、日收益、现金/持仓分布图
+
+主要指标：
+- `CAGR`
+- `TotalReturn`
+- `MaxDrawdownPct`
+- `MaxDrawdownAmount`
+- `SharpeRatio`
+- `AvgMonthlyReturn`
+- `TotalTrades`
+- `WinRate`
+- `ProfitFactor`
+- `Expectancy`
+- 以及按策略拆分的交易统计
+
+## 9. 项目结构
+
+```text
+D:\QauntTrading
+├── main.py
+├── requirements.txt
+├── README.md
+├── backtest/
+│   ├── engine.py
+│   └── reporting.py
+├── core/
+│   ├── broker.py
+│   ├── data.py
+│   ├── data_fetcher.py
+│   ├── indicators.py
+│   ├── portfolio.py
+│   ├── risk.py
+│   └── state.py
+├── router/
+│   └── router.py
+├── strategies/
+│   ├── base.py
+│   ├── mean_reversion.py
+│   └── trend_following.py
+├── tests/
+├── reports/
+└── archive/
 ```
 
-### 参数说明
--   `--start`: 开始日期 (YYYY-MM-DD)
--   `--end`: 结束日期 (YYYY-MM-DD)
--   `--days`: 回测天数 (默认 365，若指定了 start/end 则忽略此参数)
--   `--capital`: 初始资金 (默认 1000.0)
--   `--symbols`: 交易对列表 (空格分隔，默认 BTC-USD ETH-USD)
--   `--source`: 数据源 (`synthetic`, `yahoo`, `ccxt`，默认 `synthetic`)
--   `--slippage`: 滑点率 (例如 0.001 代表 0.1%，默认 0.0)
--   `--random_slip`: 启用随机滑点 (将在 0 ~ slippage 之间随机分布)
--   `--seed`: 随机种子 (默认 42，用于复现结果)
+## 10. 当前实现边界与注意事项
 
-## 回测报告
+以下内容是对当前仓库状态的真实说明：
 
-回测完成后，结果将保存在 `reports/` 目录下，文件夹名称格式为：
-`YYYYMMDD_HHMMSS_{Days}d_{Syms}Syms_{Ret}pct`
-（例如：`20260206_133110_365d_2Syms_Ret15.5pct`）
+- 当前回测主流程是单时间框架驱动（默认日线数据），尚未在主流程中实现真正的多周期联动执行。
+- `config/` 与 `models/` 目录下大多为占位代码（`pass`），未接入主回测链路。
+- `tests/` 中部分测试代码使用了过期命名（如旧状态枚举、旧类名），现状下不保证可直接通过。
+- 系统状态与策略上下文只在内存中维护，未做持久化。
+- 该项目定位为回测研究框架，不是可直接连接实盘交易所的生产交易系统。
 
-报告包含：
-1.  **report.txt**: 
-    -   **Configuration**: 记录本次回测的起止日期、资金、标的等配置。
-    -   **Metrics**: 核心指标（年化收益、最大回撤、夏普比率、胜率、盈亏比等）。
-2.  **equity.png**: 账户净值曲线图。
-3.  **trades.csv**: 详细交易记录。
-4.  **equity.csv**: 每日净值数据。
+## 11. 建议的使用顺序
 
-## 策略与系统逻辑详述 (Deep Dive)
+1. 先用 `synthetic` 验证流程完整性。
+2. 再切换到 `yahoo` 或 `ccxt` 做历史数据回测。
+3. 用 `reports/` 下的 `trades.csv` 与 `equity.csv` 做复盘分析。
+4. 若要扩展策略，优先复用 `strategies/base.py` 的统一下单与风控流程。
 
-### 1. 市场状态机 (Market State Machine)
-核心逻辑位于 `core/state.py`，基于 **MA30** 和 **斜率** 判定市场状态。
--   **TREND_UP (牛市)**:
-    -   条件: `Close > SMA30` 且 `SMA30 Slope > 0`
--   **TREND_DOWN (熊市)**:
-    -   条件: `Close < SMA30` 且 `SMA30 Slope < 0`
--   **SIDEWAYS (震荡)**:
-    -   条件: 不满足上述任一条件。
--   **稳定过滤器**: 状态必须连续保持 **3根K线** 不变，才会触发系统状态切换，避免假突破。
+## 12. 免责声明
 
-### 2. 上涨趋势策略 (TrendUpStrategy)
--   **适用状态**: `TREND_UP`
--   **入场逻辑**:
-    -   回踩确认: `Close <= SMA30 * 1.005` (即价格回调至均线附近 0.5% 范围内)
-    -   趋势确认: `SMA30 Slope > 0`
-    -   辅助确认: `SMA10 > SMA30` (多头排列)
--   **止损逻辑**:
-    -   初始止损: `EntryPrice - 2 * ATR14`
-    -   移动止损: `Max(PreviousTrail, Close - 2 * ATR14)` (只升不降)
--   **出场逻辑**:
-    -   价格跌破均线: `Close < SMA30`
-    -   状态改变: 市场状态不再是 `TREND_UP`
-    -   止损触发: 价格触及止损线
-
-### 3. 下跌趋势策略 (TrendDownStrategy)
--   **适用状态**: `TREND_DOWN`
--   **入场逻辑**:
-    -   反弹确认: `0.99 * SMA30 <= Close <= SMA30` (即价格反弹至均线下方 1% 范围内)
-    -   趋势确认: `SMA30 Slope < 0`
--   **止损逻辑**:
-    -   初始止损: `EntryPrice + 2 * ATR14`
-    -   移动止损: `Min(PreviousTrail, Close + 2 * ATR14)` (只降不升)
--   **出场逻辑**:
-    -   价格突破均线: `Close > SMA30 * 1.005` (给予 0.5% 缓冲)
-    -   状态改变: 市场状态不再是 `TREND_DOWN`
-    -   止损触发: 价格触及止损线
-
-### 4. 震荡均值回归策略 (RangeStrategy)
--   **适用状态**: `SIDEWAYS`
--   **指标参数**: 布林带 (Period=20, StdDev=2.0)
--   **入场逻辑**:
-    -   做多: `Low <= LowerBand` (触碰下轨)
-    -   做空: `High >= UpperBand` (触碰上轨)
--   **波动率过滤**: 当 `ATR14 / Close > 3%` 时禁止开仓，避免在剧烈波动中被扫损。
--   **出场逻辑**:
-    -   回归中轨: 价格触及布林带中轨 (`MiddleBand`)
-
-### 5. 系统限制与风险提示 (Known Limitations)
-本系统目前主要用于 **策略研究与逻辑验证**，与实盘交易存在以下差异：
-
-1.  **状态无持久化 (No Persistence)**:
-    -   系统运行在内存中，重启后会丢失所有策略状态（如移动止损位、连亏计数）。实盘部署需增加数据库或文件存储支持。
-2.  **单时间框架执行**:
-    -   尽管架构支持多周期，目前 `main.py` 默认以单一时间框架（如日线）驱动。
-
-### 6. 数据与回测机制
--   **数据源**: 默认为 `synthetic` (合成数据)，采用分段随机游走模型生成 牛/熊/震荡 三种行情以测试策略鲁棒性。
--   **成交机制**:
-    -   **延迟成交**: 信号产生于 Bar `i` 收盘，成交于 Bar `i+1` 开盘 (`Open`)，消除未来函数。
-    -   **滑点模拟**: 支持固定或随机滑点，成交价 = `Open * (1 ± Slip)`。
--   **手续费**:
-    -   **双边收费**: 开仓和平仓各收一次费用 (默认 0.1%)。
--   **互斥逻辑**: `Router` 确保同一标的在同一时刻只能由一个策略管理，杜绝多策略打架或同时持有多空双向仓位。
+本项目仅用于技术研究、策略开发与教学演示，不构成任何投资建议。所有交易决策与风险后果由使用者自行承担。
