@@ -26,20 +26,33 @@ pip install -r requirements.txt
 ```
 
 ### 最小可运行示例
+#### 1. 交互式模式 (推荐)
+直接运行 `main.py` 无参数即可进入交互式配置向导：
 ```bash
-python main.py --source synthetic --days 365 --capital 10000 --symbols BTC-USD ETH-USD
+python main.py
+```
+系统将引导您配置：
+- 数据源 (Synthetic/Yahoo/CCXT)
+- 交易标的 (默认 BTC-USDT ETH-USDT)
+- 初始资金 (USDT)
+- 回测时间范围 (最近 N 天或指定日期区间)
+- 滑点设置
+
+#### 2. 命令行模式
+```bash
+python main.py --source synthetic --days 365 --capital 10000 --symbols BTC-USDT ETH-USDT
 ```
 
 运行后会在 `reports/` 下生成一份独立报告目录。
 
 ## 命令行参数
-`main.py` 支持以下参数：
+`main.py` 支持以下参数（亦可通过交互模式配置）：
 
 - `--days`：回测天数，默认 `365`
 - `--start`：开始日期，格式 `YYYY-MM-DD`
 - `--end`：结束日期，格式 `YYYY-MM-DD`
-- `--capital`：初始资金，默认 `1000.0`
-- `--symbols`：交易标的列表，空格分隔，默认 `BTC-USD ETH-USD`
+- `--capital`：初始资金 (USDT)，默认 `1000.0`
+- `--symbols`：交易标的列表，空格分隔，默认 `BTC-USDT ETH-USDT`
 - `--source`：数据源，`synthetic`、`yahoo`、`ccxt`，默认 `synthetic`
 - `--seed`：随机种子，默认 `42`
 - `--slippage`：滑点率，例如 `0.001` 表示 0.1%
