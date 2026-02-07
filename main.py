@@ -44,8 +44,8 @@ def main():
     parser.add_argument(
         "--symbols",
         nargs="+",
-        default=["BTC-USD", "ETH-USD"],
-        help="List of symbols to trade",
+        default=["BTC-USDT", "ETH-USDT"],
+        help="List of symbols to trade (default: BTC-USDT ETH-USDT)",
     )
     parser.add_argument(
         "--source",
@@ -71,7 +71,96 @@ def main():
         action="store_true",
         help="Enable random slippage (uniform distribution from 0 to --slippage)",
     )
-    args = parser.parse_args()
+
+    # Check for interactive mode (no args provided)
+    if len(sys.argv) == 1:
+        print("\n" + "=" * 40)
+        print("   QuantTrading Interactive Mode")
+        print("=" * 40)
+        print("No arguments provided. Please select options:\n")
+
+        # 1. Source
+        print("Select Data Source:")
+        print("1. synthetic (Default)")
+        print("2. yahoo")
+        print("3. ccxt")
+        source_choice = input("Enter choice [1-3] or name: ").strip().lower()
+
+        source_map = {"1": "synthetic", "2": "yahoo", "3": "ccxt", "": "synthetic"}
+        source = source_map.get(source_choice, source_choice)
+        if source not in ["synthetic", "yahoo", "ccxt"]:
+            print(f"Invalid source '{source}', defaulting to synthetic.")
+            source = "synthetic"
+
+        # 2. Symbols
+        default_syms = "BTC-USDT ETH-USDT"
+        syms_input = input(
+            f"Enter symbols (space separated) [Default: {default_syms}]: "
+        ).strip()
+        if not syms_input:
+            symbols = default_syms.split()
+        else:
+            symbols = syms_input.split()
+
+        # 3. Capital
+        cap_input = input("Enter Initial Capital (USDT) [Default: 1000]: ").strip()
+        capital = cap_input if cap_input else "1000"
+
+        # 4. Date Range or Days
+        print("\nTime Period Configuration:")
+        print("1. Last N Days (Default)")
+        print("2. Specific Date Range")
+        time_choice = input("Enter choice [1-2]: ").strip()
+
+        start_arg = None
+        end_arg = None
+        days_arg = "365"
+
+        if time_choice == "2":
+            start_arg = input("Enter Start Date (YYYY-MM-DD): ").strip()
+            end_arg = input("Enter End Date (YYYY-MM-DD): ").strip()
+        else:
+            d_input = input("Enter Days to Backtest [Default: 365]: ").strip()
+            if d_input:
+                days_arg = d_input
+
+        # 5. Slippage
+        slip_input = input(
+            "Enter Slippage (e.g. 0.001 for 0.1%) [Default: 0.0]: "
+        ).strip()
+        slippage = slip_input if slip_input else "0.0"
+
+        # 6. Random Slip
+        rand_slip_input = (
+            input("Enable Random Slippage? (y/n) [Default: n]: ").strip().lower()
+        )
+        random_slip = rand_slip_input.startswith("y")
+
+        # Construct args list
+        cmd_args = [
+            "--source",
+            source,
+            "--capital",
+            capital,
+            "--slippage",
+            slippage,
+            "--symbols",
+        ] + symbols
+
+        if start_arg and end_arg:
+            cmd_args.extend(["--start", start_arg, "--end", end_arg])
+        else:
+            cmd_args.extend(["--days", days_arg])
+
+        if random_slip:
+            cmd_args.append("--random_slip")
+
+        print(f"\nRunning with: {' '.join(cmd_args)}")
+        print("-" * 40 + "\n")
+
+        args = parser.parse_args(cmd_args)
+    else:
+        args = parser.parse_args()
 
     if args.seed is not None:
         np.random.seed(args.seed)
@@ -143,7 +232,13 @@ def main():
     results = engine.run(data_map)
 
     if not results or results["equity_curve"].empty:
-        print("Backtest failed or produced no results.")
+        print("\n" + "!" * 50)
+        print("ERROR: Backtest failed or produced no results.")
+        print("Possible causes:")
+        print("1. No common timeframe found between symbols (check start/end dates).")
+        print("2. Data fetching failed for some symbols.")
+        print("3. Strategy produced no trades and no equity updates.")
+        print("!" * 50 + "\n")
         return
 
     # 3. Generate Report
