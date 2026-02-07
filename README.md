@@ -1,4 +1,4 @@
-# QuantTrading 量化交易系统
+﻿# QuantTrading 量化交易系统
 
 ## 免责声明
 本项目仅用于策略研究、教学演示与回测验证，不构成任何投资建议，不保证收益，也不提供任何实盘承诺。所有交易决策与风险后果由使用者自行承担。
@@ -58,29 +58,50 @@ python main.py --source synthetic --days 365 --capital 10000 --symbols BTC-USD E
 6. 每根 K 线先处理挂单（按当根开盘价成交），再执行策略路由。
 7. 记录净值曲线并输出报告。
 
-## 项目结构说明（总览格式）
+## 📂 项目结构说明
+
 ```text
-main.py                           # 主程序
-requirements.txt                  # 依赖清单
-README.md                         # 项目说明文档
-backtest/engine.py                # 回测引擎主循环
-backtest/reporting.py             # 回测报告生成
-core/data_fetcher.py              # 数据获取模块
-core/data.py                      # 数据校验与重采样
-core/indicators.py                # 技术指标计算
-core/state.py                     # 市场状态机
-core/broker.py                    # 订单与成交模拟
-core/portfolio.py                 # 账户与持仓管理
-core/risk.py                      # 风控与仓位计算
-router/router.py                  # 状态到策略路由与切换控制
-strategies/base.py                # 策略基类
-strategies/trend_following.py     # 趋势策略（做多/做空）
-strategies/mean_reversion.py      # 区间均值回归策略
-reports/                          # 回测结果输出目录
-tests/                            # 测试与验证脚本
-config/                           # 配置占位目录（当前未接入主流程）
-models/                           # 模型占位目录（当前未接入主流程）
-archive/                          # 历史脚本归档目录
+QauntTrading/
+├── main.py                       # [入口] 主程序 (参数解析/流程编排)
+├── requirements.txt              # [依赖] 项目依赖库清单
+├── README.md                     # [文档] 项目说明与使用指南
+│
+├── config/                       # [配置] 系统与策略配置
+│   ├── params.yaml               # 全局参数配置文件 (YAML)
+│   └── config.py                 # 配置加载与验证逻辑
+│
+├── core/                         # [核心] 交易底层架构模块
+│   ├── broker.py                 # 交易执行 (订单队列/滑点/手续费)
+│   ├── data.py                   # 数据管道 (清洗/验证/重采样)
+│   ├── data_fetcher.py           # 数据采集 (Yahoo/CCXT/合成数据)
+│   ├── indicators.py             # 技术指标库 (TA-Lib 封装)
+│   ├── metrics.py                # 绩效评估 (夏普比/回撤/盈亏比)
+│   ├── portfolio.py              # 账户管理 (资金/持仓/市值计算)
+│   ├── risk.py                   # 风控中心 (仓位管理/止损止盈)
+│   ├── state.py                  # 市场状态机 (Trend/Sideways 识别)
+│   └── logger.py                 # 全局日志记录器
+│
+├── router/                       # [路由] 策略调度中心
+│   └── router.py                 # 基于市场状态的策略动态切换
+│
+├── strategies/                   # [策略] 交易策略实现
+│   ├── base.py                   # 策略抽象基类 (接口定义)
+│   ├── trend_following.py        # 趋势跟踪策略 (顺势交易)
+│   └── mean_reversion.py         # 均值回归策略 (震荡交易)
+│
+├── backtest/                     # [回测] 回测引擎
+│   ├── engine.py                 # 事件驱动回测主循环
+│   └── reporting.py              # 报告生成与可视化图表
+│
+├── models/                       # [模型] 机器学习模块 (预留)
+│   ├── features.py               # 特征工程
+│   ├── predictor.py              # 预测推理
+│   └── trainer.py                # 模型训练
+│
+├── reports/                      # [输出] 回测结果自动归档
+├── tests/                        # [测试] 单元测试套件
+├── archive/                      # [归档] 历史版本代码
+└── verify_*.py                   # [工具] 快速功能验证脚本
 ```
 
 ## 项目结构详细解释
