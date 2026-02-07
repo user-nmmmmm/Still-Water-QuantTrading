@@ -16,7 +16,7 @@ class DataFetcher:
     Supports proxy configuration.
     """
 
-    def __init__(self, proxy_url: Optional[str] = None):
+    def __init__(self, proxy_url: Optional[str] = "http://127.0.0.1:7897"):
         self.proxy_url = proxy_url
         self._setup_proxy()
 
@@ -105,16 +105,54 @@ class DataFetcher:
             # Check if symbol exists (optional)
             # exchange.load_markets()
 
-            ohlcv = exchange.fetch_ohlcv(
-                symbol, timeframe=timeframe, limit=limit, since=since
-            )
+            all_ohlcv = []
+            current_since = since
 
-            if not ohlcv:
+            # Fetch in batches
+            while True:
+                # Use a safe limit for pagination, e.g., 1000
+                batch_limit = min(limit, 1000)
+
+                ohlcv = exchange.fetch_ohlcv(
+                    symbol, timeframe=timeframe, limit=batch_limit, since=current_since
+                )
+
+                if not ohlcv:
+                    break
+
+                all_ohlcv.extend(ohlcv)
+
+                # Update since for next batch (last timestamp + 1ms)
+                last_timestamp = ohlcv[-1][0]
+                current_since = last_timestamp + 1
+
+                # Check if we have reached the end_date (if provided)
+                if end_date:
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                    end_ts = int(end_dt.timestamp() * 1000)
+                    if last_timestamp >= end_ts:
+                        break
+
+                # Check if we have fetched enough candles (if limit is strict count)
+                # But here limit is usually 'days' which is approximate count.
+                # We should stop if we have enough data or no more data.
+                if len(ohlcv) < batch_limit:
+                    break
+
+                # Safety break for very long loops
+                if len(all_ohlcv) >= 10000:  # Max 10000 days ~ 27 years
+                    logger.warning(
+                        f"Reached safety limit of 10000 candles for {symbol}"
+                    )
+                    break
+
+            if not all_ohlcv:
                 logger.warning(f"No data returned for {symbol}")
                 return pd.DataFrame()
 
             df = pd.DataFrame(
-                ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
+                all_ohlcv,
+                columns=["timestamp", "open", "high", "low", "close", "volume"],
             )
             df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
             df.set_index("timestamp", inplace=True)
