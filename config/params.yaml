@@ -1,3 +1,27 @@
-# Parameters
-params:
-  default: true
+# System Configuration & Parameters
+
+# 1. Execution & Fees
+execution:
+  commission_rate_taker: 0.001  # 0.1%
+  commission_rate_maker: 0.0005 # 0.05% (Reserved for limit orders)
+  slippage_bps: 5               # 5 basis points (0.05%)
+  use_impact_cost: false        # Enable volume-based impact cost
+
+# 2. Risk Management
+risk:
+  max_leverage: 3.0
+  risk_per_trade: 0.01          # 1% of equity per trade
+  max_drawdown_limit: 0.20      # Circuit breaker at 20% DD
+
+# 3. Strategy Routing (Regime Map)
+# Map Market State to Strategy Class Name
+routing:
+  TREND_UP: "TrendUp"
+  TREND_DOWN: "TrendDown"
+  SIDEWAYS: "RangeMeanReversion"
+  VOLATILE: "TrendBreakout"     # P3: Alpha Integration
+
+
+# 4. Data
+data:
+  check_quality: true           # Generate data quality report

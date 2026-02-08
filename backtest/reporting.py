@@ -16,9 +16,13 @@ class ReportGenerator:
         trades: List[Dict],
         equity_curve: pd.DataFrame,
         metadata: Dict[str, Any] = None,
+        benchmark_curve: pd.Series = None,
     ):
         # 1. Save CSVs
         equity_curve.to_csv(os.path.join(self.output_dir, "equity.csv"))
+
+        if benchmark_curve is not None:
+            benchmark_curve.to_csv(os.path.join(self.output_dir, "benchmark.csv"))
 
         trades_df = pd.DataFrame(trades)
         if not trades_df.empty:
@@ -34,7 +38,7 @@ class ReportGenerator:
         self._save_report_text(metrics, metadata)
 
         # 4. Generate Plots
-        self._plot_equity(equity_curve)
+        self._plot_equity(equity_curve, benchmark_curve)
 
         return metrics
 
@@ -91,25 +95,32 @@ class ReportGenerator:
                 "WinRate": 0.0,
                 "ProfitFactor": 0.0,
                 "AvgTrade": 0.0,
+                "GrossPnL": 0.0,
+                "TotalCommission": 0.0,
+                "TotalSlippage": 0.0,
+                "NetPnL": 0.0,
             }
 
         # Reconstruct PnL using FIFO
-        closed_trades = []  # List of {'pnl': float, 'strategy': str}
+        closed_trades = []  # List of dicts with pnl details
 
         # Group by symbol
         for symbol, group in trades_df.groupby("symbol"):
             long_stack: List[
-                Tuple[float, float, str, float]
-            ] = []  # (qty, price, strategy_id, unit_comm)
+                Tuple[float, float, str, float, float]
+            ] = []  # (qty, price, strategy_id, unit_comm, unit_slip)
             short_stack: List[
-                Tuple[float, float, str, float]
-            ] = []  # (qty, price, strategy_id, unit_comm)
+                Tuple[float, float, str, float, float]
+            ] = []  # (qty, price, strategy_id, unit_comm, unit_slip)
 
             for _, row in group.iterrows():
                 side = row["side"]
                 qty = row["qty"]
                 price = row["fill_price"]
                 comm = row["commission"]
+                # Broker stores 'slip' as unit price difference (absolute)
+                unit_slip = row.get("slip", 0.0)
+
                 unit_comm = comm / qty if qty > 0 else 0.0
 
                 strategy_id = row.get("strategy_id", "Unknown")
@@ -118,104 +129,175 @@ class ReportGenerator:
                     # Check if covering short
                     remaining = qty
                     while remaining > 0 and short_stack:
-                        s_qty, s_price, s_strat, s_unit_comm = short_stack.pop(0)
+                        s_qty, s_price, s_strat, s_unit_comm, s_unit_slip = (
+                            short_stack.pop(0)
+                        )
                         matched = min(remaining, s_qty)
 
                         # Short PnL: (Entry - Exit) * qty
                         gross_pnl = (s_price - price) * matched
-                        # Commission: Entry part + Exit part
-                        # Entry part: s_unit_comm * matched
-                        # Exit part: unit_comm * matched
+
+                        # Commission: Entry + Exit
                         trade_comm = (s_unit_comm + unit_comm) * matched
+
+                        # Slippage: Entry + Exit
+                        # Note: Slippage is always a cost (positive value in record)
+                        trade_slip = (s_unit_slip + unit_slip) * matched
+
                         net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": net_pnl, "strategy": s_strat})
+                        closed_trades.append(
+                            {
+                                "gross_pnl": gross_pnl,
+                                "net_pnl": net_pnl,
+                                "commission": trade_comm,
+                                "slippage": trade_slip,
+                                "strategy": s_strat,
+                            }
+                        )
 
                         remaining -= matched
                         if s_qty > matched:
                             short_stack.insert(
-                                0, (s_qty - matched, s_price, s_strat, s_unit_comm)
+                                0,
+                                (
+                                    s_qty - matched,
+                                    s_price,
+                                    s_strat,
+                                    s_unit_comm,
+                                    s_unit_slip,
+                                ),
                             )
 
                     if remaining > 0:
-                        long_stack.append((remaining, price, strategy_id, unit_comm))
+                        long_stack.append(
+                            (remaining, price, strategy_id, unit_comm, unit_slip)
+                        )
 
                 elif side == "sell":
                     # Close Long
                     remaining = qty
                     while remaining > 0 and long_stack:
-                        l_qty, l_price, l_strat, l_unit_comm = long_stack.pop(0)
+                        l_qty, l_price, l_strat, l_unit_comm, l_unit_slip = (
+                            long_stack.pop(0)
+                        )
                         matched = min(remaining, l_qty)
 
                         # Long PnL: (Exit - Entry) * qty
                         gross_pnl = (price - l_price) * matched
                         trade_comm = (l_unit_comm + unit_comm) * matched
+                        trade_slip = (l_unit_slip + unit_slip) * matched
                         net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": net_pnl, "strategy": l_strat})
+                        closed_trades.append(
+                            {
+                                "gross_pnl": gross_pnl,
+                                "net_pnl": net_pnl,
+                                "commission": trade_comm,
+                                "slippage": trade_slip,
+                                "strategy": l_strat,
+                            }
+                        )
 
                         remaining -= matched
                         if l_qty > matched:
                             long_stack.insert(
-                                0, (l_qty - matched, l_price, l_strat, l_unit_comm)
+                                0,
+                                (
+                                    l_qty - matched,
+                                    l_price,
+                                    l_strat,
+                                    l_unit_comm,
+                                    l_unit_slip,
+                                ),
                             )
 
                     if remaining > 0:
-                        short_stack.append((remaining, price, strategy_id, unit_comm))
-
-                # Handle 'short' and 'cover' if they exist separately (Broker uses buy/sell/short/cover?)
-                # Broker uses: buy, sell, short, cover?
-                # Let's check Broker._execute_trade logic.
-                # Broker maps: 'buy' (long open), 'sell' (long close), 'short' (short open), 'cover' (short close).
-                # But reporting.py currently only handles 'buy' and 'sell'.
-                # I should add 'short' and 'cover'.
+                        short_stack.append(
+                            (remaining, price, strategy_id, unit_comm, unit_slip)
+                        )
 
                 elif side == "short":
                     # Open Short
-                    remaining = qty
-                    # Should we check for existing longs? (Reversal?)
-                    # For simplicity, assume strict separation or FIFO.
-                    # If we have longs, 'short' usually means 'sell to close' + 'sell to open'?
-                    # But Router sends 'sell' to close long, and 'short' to open short.
-                    # So 'short' should just add to short_stack.
-
-                    # Wait, if we have longs, 'short' command might be error if not flat?
-                    # But assuming Router handles it (Router closes first).
-                    short_stack.append((qty, price, strategy_id, unit_comm))
+                    short_stack.append((qty, price, strategy_id, unit_comm, unit_slip))
 
                 elif side == "cover":
                     # Close Short (Buy to Cover)
-                    # Match against short_stack
                     remaining = qty
                     while remaining > 0 and short_stack:
-                        s_qty, s_price, s_strat, s_unit_comm = short_stack.pop(0)
+                        s_qty, s_price, s_strat, s_unit_comm, s_unit_slip = (
+                            short_stack.pop(0)
+                        )
                         matched = min(remaining, s_qty)
 
                         gross_pnl = (s_price - price) * matched
                         trade_comm = (s_unit_comm + unit_comm) * matched
+                        trade_slip = (s_unit_slip + unit_slip) * matched
                         net_pnl = gross_pnl - trade_comm
 
-                        closed_trades.append({"pnl": net_pnl, "strategy": s_strat})
+                        closed_trades.append(
+                            {
+                                "gross_pnl": gross_pnl,
+                                "net_pnl": net_pnl,
+                                "commission": trade_comm,
+                                "slippage": trade_slip,
+                                "strategy": s_strat,
+                            }
+                        )
 
                         remaining -= matched
                         if s_qty > matched:
                             short_stack.insert(
-                                0, (s_qty - matched, s_price, s_strat, s_unit_comm)
+                                0,
+                                (
+                                    s_qty - matched,
+                                    s_price,
+                                    s_strat,
+                                    s_unit_comm,
+                                    s_unit_slip,
+                                ),
                             )
 
-                    # If remaining > 0, we are buying more than we are short? -> Net Long?
                     if remaining > 0:
-                        long_stack.append((remaining, price, strategy_id, unit_comm))
+                        long_stack.append(
+                            (remaining, price, strategy_id, unit_comm, unit_slip)
+                        )
 
         if not closed_trades:
-            return {"TotalTrades": 0, "WinRate": 0.0, "ProfitFactor": 0.0}
+            return {
+                "TotalTrades": 0,
+                "WinRate": 0.0,
+                "ProfitFactor": 0.0,
+                "GrossPnL": 0.0,
+                "TotalCommission": 0.0,
+                "TotalSlippage": 0.0,
+                "NetPnL": 0.0,
+            }
 
         # 1. Global Metrics
-        all_pnls = [t["pnl"] for t in closed_trades]
-        wins = [p for p in all_pnls if p > 0]
-        losses = [p for p in all_pnls if p <= 0]
+        all_net_pnls = [t["net_pnl"] for t in closed_trades]
+        all_gross_pnls = [t["gross_pnl"] for t in closed_trades]
+        all_comms = [t["commission"] for t in closed_trades]
+        all_slips = [t["slippage"] for t in closed_trades]
 
-        win_rate = len(wins) / len(all_pnls)
+        if not all_net_pnls:
+            return {
+                "TotalTrades": 0,
+                "WinRate": 0.0,
+                "ProfitFactor": 0.0,
+                "Expectancy": 0.0,
+                "AvgWin": 0.0,
+                "AvgLoss": 0.0,
+                "GrossPnL": 0.0,
+                "TotalCommission": 0.0,
+                "TotalSlippage": 0.0,
+                "NetPnL": 0.0,
+            }
+
+        wins = [p for p in all_net_pnls if p > 0]
+        losses = [p for p in all_net_pnls if p <= 0]
+
+        win_rate = len(wins) / len(all_net_pnls)
         gross_profit = sum(wins)
         gross_loss = abs(sum(losses))
         profit_factor = gross_profit / gross_loss if gross_loss != 0 else float("inf")
@@ -223,19 +305,20 @@ class ReportGenerator:
         avg_win = sum(wins) / len(wins) if wins else 0
         avg_loss = sum(losses) / len(losses) if losses else 0
 
-        # Expectancy = (WinRate * AvgWin) - (LossRate * AvgLoss)
-        # Note: avg_loss is negative, so we add it if using the formula (Win% * AvgWin) + (Loss% * AvgLoss)
-        # Or (Win% * AvgWin) - (Loss% * abs(AvgLoss))
         loss_rate = 1 - win_rate
         expectancy = (win_rate * avg_win) + (loss_rate * avg_loss)
 
         metrics = {
-            "TotalTrades": len(all_pnls),
+            "TotalTrades": len(all_net_pnls),
             "WinRate": win_rate,
             "ProfitFactor": profit_factor,
             "Expectancy": expectancy,
             "AvgWin": avg_win,
             "AvgLoss": avg_loss,
+            "GrossPnL": sum(all_gross_pnls),
+            "TotalCommission": sum(all_comms),
+            "TotalSlippage": sum(all_slips),
+            "NetPnL": sum(all_net_pnls),
         }
 
         # 2. Per Strategy Metrics
@@ -244,9 +327,10 @@ class ReportGenerator:
             s = t["strategy"]
             if s not in strat_map:
                 strat_map[s] = []
-            strat_map[s].append(t["pnl"])
+            strat_map[s].append(t)
 
-        for s, pnls in strat_map.items():
+        for s, trades in strat_map.items():
+            pnls = [t["net_pnl"] for t in trades]
             s_wins = [p for p in pnls if p > 0]
             s_losses = [p for p in pnls if p <= 0]
             s_wr = len(s_wins) / len(pnls)
@@ -254,11 +338,15 @@ class ReportGenerator:
                 sum(s_wins) / abs(sum(s_losses)) if sum(s_losses) != 0 else float("inf")
             )
             s_total = sum(pnls)
+            s_comm = sum(t["commission"] for t in trades)
+            s_slip = sum(t["slippage"] for t in trades)
 
             metrics[f"Strat_{s}_Trades"] = len(pnls)
             metrics[f"Strat_{s}_WinRate"] = s_wr
             metrics[f"Strat_{s}_ProfitFactor"] = s_pf
             metrics[f"Strat_{s}_NetPnL"] = s_total
+            metrics[f"Strat_{s}_Comm"] = s_comm
+            metrics[f"Strat_{s}_Slip"] = s_slip
 
         return metrics
 
@@ -280,6 +368,10 @@ class ReportGenerator:
             "Expectancy": "Expectancy (期望值)",
             "AvgWin": "Avg Win (平均盈利)",
             "AvgLoss": "Avg Loss (平均亏损)",
+            "GrossPnL": "Gross PnL (毛利润)",
+            "TotalCommission": "Total Commission (总手续费)",
+            "TotalSlippage": "Total Slippage (总滑点成本)",
+            "NetPnL": "Net PnL (净利润)",
         }
 
         path = os.path.join(self.output_dir, "report.txt")
@@ -332,7 +424,9 @@ class ReportGenerator:
                 "   - exit_reason: Reason for order (成交原因: signal/stop/takeprofit)\n"
             )
 
-    def _plot_equity(self, equity_curve: pd.DataFrame):
+    def _plot_equity(
+        self, equity_curve: pd.DataFrame, benchmark_curve: pd.Series = None
+    ):
         try:
             # Create a figure with 4 subplots
             fig = plt.figure(figsize=(16, 12))
@@ -351,10 +445,23 @@ class ReportGenerator:
             ax1.plot(
                 equity_curve.index,
                 equity_curve["equity"],
-                label="Total Equity (总净值)",
+                label="Strategy Equity (策略净值)",
                 color="blue",
                 linewidth=1.5,
             )
+
+            if benchmark_curve is not None:
+                # Align benchmark to equity curve (ensure same index range if possible)
+                # But usually plotting handles date index fine.
+                ax1.plot(
+                    benchmark_curve.index,
+                    benchmark_curve,
+                    label="Benchmark (Buy & Hold)",
+                    color="gray",
+                    linewidth=1.0,
+                    linestyle="--",
+                )
+
             ax1.set_title("Equity Curve (净值曲线)", fontsize=12, fontweight="bold")
             ax1.set_ylabel("Value (USDT)")
             ax1.legend(loc="upper left")

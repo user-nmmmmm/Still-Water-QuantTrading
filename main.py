@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import argparse
 import random
 import numpy as np
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from core.data_fetcher import DataFetcher
+from core.data import DataHandler
 from backtest.engine import BacktestEngine
 from backtest.reporting import ReportGenerator
 
@@ -220,6 +222,11 @@ def main():
         print("No data available. Exiting.")
         return
 
+    # 1.1 Generate Data Quality Report
+    print("Generating Data Quality Report...")
+    # Store report in memory to save later in the specific backtest folder
+    quality_report = DataHandler.generate_quality_report(data_map, output_path=None)
+
     # 2. Run Backtest
     print("\nInitializing Backtest Engine...")
     engine = BacktestEngine(
@@ -229,7 +236,11 @@ def main():
     )
 
     print("Running Backtest...")
-    results = engine.run(data_map)
+    # Use a temporary path for routing log, to be moved later
+    if not os.path.exists(os.path.join(os.getcwd(), "reports")):
+        os.makedirs(os.path.join(os.getcwd(), "reports"))
+    temp_routing_log = os.path.join(os.getcwd(), "reports", "temp_routing_log.csv")
+    results = engine.run(data_map, routing_log_path=temp_routing_log)
 
     if not results or results["equity_curve"].empty:
         print("\n" + "!" * 50)
@@ -239,6 +250,12 @@ def main():
         print("2. Data fetching failed for some symbols.")
         print("3. Strategy produced no trades and no equity updates.")
         print("!" * 50 + "\n")
+        # Cleanup temp log
+        if os.path.exists(temp_routing_log):
+            try:
+                os.remove(temp_routing_log)
+            except:
+                pass
         return
 
     # 3. Generate Report
@@ -270,8 +287,31 @@ def main():
     }
 
     metrics = reporter.generate(
-        results["trades"], results["equity_curve"], metadata=metadata
+        results["trades"],
+        results["equity_curve"],
+        metadata=metadata,
+        benchmark_curve=results.get("benchmark"),
     )
+
+    # Save Data Quality Report
+    dq_report_path = os.path.join(output_dir, "data_quality_report.json")
+    try:
+        import json
+
+        with open(dq_report_path, "w") as f:
+            json.dump(quality_report, f, indent=4, default=str)
+        print(f"Data quality report saved to {dq_report_path}")
+    except Exception as e:
+        print(f"Failed to save data quality report: {e}")
+
+    # Move Routing Log
+    final_routing_log = os.path.join(output_dir, "routing_log.csv")
+    if os.path.exists(temp_routing_log):
+        try:
+            shutil.move(temp_routing_log, final_routing_log)
+            print(f"Routing log moved to {final_routing_log}")
+        except Exception as e:
+            print(f"Failed to move routing log: {e}")
 
     print("\n" + "=" * 30)
     print("BACKTEST RESULTS")

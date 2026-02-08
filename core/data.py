@@ -69,3 +69,58 @@ class DataHandler:
         resampled.dropna(inplace=True)
         
         return resampled
+
+    @staticmethod
+    def analyze_quality(df: pd.DataFrame, symbol: str = "Unknown") -> dict:
+        """
+        Analyze data quality: gaps, duplicates, spikes.
+        """
+        report = {
+            "symbol": symbol,
+            "total_rows": len(df),
+            "start_date": str(df.index.min()),
+            "end_date": str(df.index.max()),
+            "duplicates": df.index.duplicated().sum(),
+            "missing_values": df.isnull().sum().to_dict(),
+            "gaps": 0,
+            "spikes": 0
+        }
+
+        # Check for gaps (assuming regular frequency if possible)
+        # Calculate time diffs
+        if len(df) > 1:
+            diffs = df.index.to_series().diff().dropna()
+            # Infer frequency: median diff
+            freq = diffs.median()
+            # Gaps: diff > 1.5 * freq
+            gaps = diffs[diffs > 1.5 * freq]
+            report["gaps"] = len(gaps)
+            report["expected_freq"] = str(freq)
+            
+            # Check for price spikes (> 20% change in one bar)
+            # pct_change
+            returns = df['close'].pct_change().abs()
+            spikes = returns[returns > 0.20]
+            report["spikes"] = len(spikes)
+            
+        return report
+
+    @staticmethod
+    def generate_quality_report(data_map: dict, output_path: str = None) -> dict:
+        """
+        Generate comprehensive quality report for multiple symbols.
+        """
+        full_report = {}
+        for symbol, df in data_map.items():
+            full_report[symbol] = DataHandler.analyze_quality(df, symbol)
+            
+        if output_path:
+            import json
+            try:
+                with open(output_path, 'w') as f:
+                    json.dump(full_report, f, indent=4, default=str)
+                print(f"Data quality report saved to {output_path}")
+            except Exception as e:
+                print(f"Failed to save data quality report: {e}")
+                
+        return full_report
