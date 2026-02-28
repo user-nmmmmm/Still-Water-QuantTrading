@@ -16,10 +16,14 @@ risk:
 # 3. Strategy Routing (Regime Map)
 # Map Market State to Strategy Class Name
 routing:
-  TREND_UP: "TrendUp"
+  TREND_UP: "TrendBreakout"     # Issue1/2 fix: leverage best-performing module in moderate uptrends too
   TREND_DOWN: "TrendDown"
   SIDEWAYS: "RangeMeanReversion"
   VOLATILE: "TrendBreakout"     # P3: Alpha Integration
+
+# 3b. Router Parameters
+router:
+  cooldown_bars: 2              # Issue2 fix: reduced from 3 → faster re-entry after state switch
 
 
 # 4. Data

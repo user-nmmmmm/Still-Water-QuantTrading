@@ -31,6 +31,7 @@ class BacktestEngine:
         self.config_execution = config.get("execution") or {}
         self.config_risk = config.get("risk") or {}
         self.config_routing = config.get("routing") or {}
+        self.config_router = config.get("router") or {}  # Issue2 fix: router-level params
 
         # CLI overrides
         self.slippage = slippage
@@ -120,7 +121,8 @@ class BacktestEngine:
             max_drawdown_limit=self.config_risk.get("max_drawdown_limit", 0.20),
         )
 
-        state_machine = MarketStateMachine()
+        # Issue2 fix: stability_period=2 → 1 bar faster state-change detection (was 3)
+        state_machine = MarketStateMachine(stability_period=2)
 
         # 2. Setup Strategies & Router
         if strategies is None:
@@ -144,7 +146,10 @@ class BacktestEngine:
                 os.makedirs(log_dir)
 
         router = Router(
-            strategies, regime_map=self.config_routing, log_path=routing_log_path
+            strategies,
+            regime_map=self.config_routing,
+            cooldown_bars=self.config_router.get("cooldown_bars", 3),
+            log_path=routing_log_path,
         )
 
         # 3. Prepare Data
