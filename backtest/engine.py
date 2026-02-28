@@ -215,8 +215,11 @@ class BacktestEngine:
             # Reindex
             df_aligned = df.reindex(common_index).copy()
 
-            # Forward fill price data (if gaps exist)
-            df_aligned = df_aligned.ffill().bfill()
+            # Forward fill price data (if gaps exist).
+            # bfill() is intentionally omitted: it would propagate future values
+            # backward into the warm-up period, introducing lookahead bias.
+            # Any leading NaNs are handled by the warmup_period skip in the main loop.
+            df_aligned = df_aligned.ffill()
 
             # Calculate Indicators
             # Indicators.calculate_all modifies the dataframe in-place
