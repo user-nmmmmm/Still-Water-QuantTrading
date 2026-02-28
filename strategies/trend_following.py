@@ -102,12 +102,13 @@ class TrendUpStrategy(Strategy):
         if state not in self.allowed_states:
             return {"action": "sell", "reason": "State changed"}
 
-        # 3. Stop/Trail triggered
+        # 3. Stop/Trail triggered — use bar LOW (not close) to detect intrabar stop breach
         stop_loss = ctx.get("stop_loss", -np.inf)
         trailing_stop = ctx.get("trailing_stop", -np.inf)
         effective_stop = max(stop_loss, trailing_stop)
 
-        if close < effective_stop:
+        bar_low = df["low"].iloc[i]
+        if bar_low < effective_stop:
             return {"action": "sell", "reason": "Stop/Trail hit"}
 
         # Update Trailing Stop
@@ -198,12 +199,13 @@ class TrendDownStrategy(Strategy):
         if state not in self.allowed_states:
             return {"action": "cover", "reason": "State changed"}
 
-        # 3. Stop/Trail triggered
+        # 3. Stop/Trail triggered — use bar HIGH (not close) to detect intrabar stop breach
         stop_loss = ctx.get("stop_loss", np.inf)
         trailing_stop = ctx.get("trailing_stop", np.inf)
         effective_stop = min(stop_loss, trailing_stop)
 
-        if close > effective_stop:
+        bar_high = df["high"].iloc[i]
+        if bar_high > effective_stop:
             return {"action": "cover", "reason": "Stop/Trail hit"}
 
         # Update Trailing Stop for Short

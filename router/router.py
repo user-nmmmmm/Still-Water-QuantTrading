@@ -116,19 +116,23 @@ class Router:
             df = pd.DataFrame(self.log_buffer)
             df.to_csv(self.log_path, index=False)
 
-    def _handle_switch(self, symbol: str, i: int, df: pd.DataFrame, 
-                       old_state: MarketState, new_state: MarketState, 
+    def _handle_switch(self, symbol: str, i: int, df: pd.DataFrame,
+                       old_state: MarketState, new_state: MarketState,
                        portfolio: Portfolio, broker: Broker):
         """
         Handle state transition:
-        1. Clear context of old strategy
-        2. Force close any existing positions for this symbol
+        1. Cancel all pending/active broker orders for this symbol (prevents zombie fills)
+        2. Clear context of old strategy
+        3. Force close any existing positions for this symbol
         """
+        # Cancel stale limit/stop orders BEFORE closing the position.
+        # Without this, an unfilled LIMIT buy from the old regime could fill later
+        # with no stop-loss context attached (context was already cleared).
+        broker.cancel_symbol_orders(symbol)
+
         # Identify old strategy to clear its context
         old_strat_name = self._map_state_to_strategy(old_state)
         if old_strat_name and old_strat_name in self.strategies:
-            # Manually reset context for this symbol
-            # Assuming context is a dict: strategy.context[symbol] = {}
             if symbol in self.strategies[old_strat_name].context:
                 self.strategies[old_strat_name].context[symbol] = {}
 
@@ -136,12 +140,10 @@ class Router:
         # This ensures strict mutex: we never hold a 'TrendUp' position when state becomes 'Range'
         pos = portfolio.get_position(symbol)
         qty = pos['qty']
-        
+
         if qty != 0:
             current_price = df['close'].iloc[i]
             timestamp = df.index[i]
-            # Use Broker to execute closing order
-            # We treat this as a forced system exit
             if qty > 0:
                 broker.submit_order(symbol, 'sell', abs(qty), current_price, timestamp=timestamp, strategy_id="Router", exit_reason="StateSwitch")
             elif qty < 0:

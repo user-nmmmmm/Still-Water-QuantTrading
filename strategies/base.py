@@ -70,7 +70,13 @@ class Strategy(ABC):
         qty = current_pos["qty"]
 
         # 1. Check Exit if we have a position
-        if qty != 0:
+        # Skip exit check on the bar immediately after entry to avoid same-bar entry-exit churn:
+        # Entry order is submitted at bar N, fills at bar N+1 open, then on_bar runs at bar N+1.
+        # We must not check exit at bar N+1 for a freshly opened position.
+        ctx_pre = self.get_context(symbol)
+        just_entered = i <= ctx_pre.get("entry_bar", -2) + 1
+
+        if qty != 0 and not just_entered:
             exit_signal = self.should_exit(symbol, i, df, state, portfolio)
             if exit_signal:
                 action = exit_signal["action"]  # 'sell' or 'cover'
@@ -169,4 +175,5 @@ class Strategy(ABC):
                                 "trailing_stop": -np.inf
                                 if action == "buy"
                                 else np.inf,  # Init trail
+                                "entry_bar": i,  # Track bar to prevent same-bar exit
                             }

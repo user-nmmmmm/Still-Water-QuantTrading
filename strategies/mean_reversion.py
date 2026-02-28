@@ -92,12 +92,14 @@ class RangeStrategy(Strategy):
         elif qty < 0 and close <= bb_mid:
             reason = 'Target hit (Mid Band)'
             
-        # 2. Stop Loss
+        # 2. Stop Loss — use bar LOW/HIGH to detect intrabar breaches
         stop_loss = ctx.get('stop_loss')
         if stop_loss is not None:
-            if qty > 0 and close < stop_loss:
+            bar_low = df['low'].iloc[i]
+            bar_high = df['high'].iloc[i]
+            if qty > 0 and bar_low < stop_loss:
                 reason = 'Stop Loss'
-            elif qty < 0 and close > stop_loss:
+            elif qty < 0 and bar_high > stop_loss:
                 reason = 'Stop Loss'
                 
         if reason:

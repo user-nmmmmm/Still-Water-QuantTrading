@@ -89,6 +89,10 @@ class TrendBreakoutStrategy(Strategy):
         state: MarketState,
         portfolio: Portfolio,
     ) -> Optional[Dict[str, Any]]:
+        # P5: Gate on health check before generating any signal
+        if not self.check_health():
+            return None
+
         self._ensure_indicators(df)
 
         if i < self.entry_window:
@@ -128,6 +132,21 @@ class TrendBreakoutStrategy(Strategy):
 
         return None
 
+    def _record_trade_result(self, symbol: str, portfolio: Portfolio, exit_price: float):
+        """Update P5 health stats with realized PnL of the just-closed trade."""
+        ctx = self.get_context(symbol)
+        entry_price = ctx.get("entry_price", exit_price)
+        qty = portfolio.get_position(symbol).get("qty", 0)
+        if qty == 0:
+            return  # Position already closed before we could read it; skip.
+        pnl = (exit_price - entry_price) * abs(qty)
+        self.health_stats["total_trades"] += 1
+        self.health_stats["rolling_pnl"].append(pnl)
+        if pnl < 0:
+            self.health_stats["consecutive_losses"] += 1
+        else:
+            self.health_stats["consecutive_losses"] = 0
+
     def should_exit(
         self,
         symbol: str,
@@ -143,6 +162,7 @@ class TrendBreakoutStrategy(Strategy):
 
         # 1. Exit Signal
         if pd.notna(low_min) and close < low_min:
+            self._record_trade_result(symbol, portfolio, close)
             return {
                 "action": "sell",
                 "reason": f"Breakout Exit (Below Low{self.exit_window})",
@@ -150,8 +170,7 @@ class TrendBreakoutStrategy(Strategy):
 
         # 2. Regime Check (System Rule)
         if state not in self.allowed_states:
-            # If regime switches to SIDEWAYS or TREND_DOWN, we exit.
-            # This is the "System Control" part of P3.
+            self._record_trade_result(symbol, portfolio, close)
             return {"action": "sell", "reason": f"Regime {state.name} Not Allowed"}
 
         return None

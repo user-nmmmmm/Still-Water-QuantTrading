@@ -357,5 +357,26 @@ class Broker:
 
         return trade_record
 
+    def cancel_symbol_orders(self, symbol: str) -> int:
+        """
+        Cancel all pending and active orders for a given symbol.
+        Returns the number of orders cancelled.
+        Called on state switch to prevent stale limit orders from filling
+        in the wrong market regime.
+        """
+        before = len(self.pending_orders) + len(self.active_orders)
+
+        self.pending_orders = [o for o in self.pending_orders if o.symbol != symbol]
+        cancelled = [o for o in self.active_orders if o.symbol == symbol]
+        self.active_orders = [o for o in self.active_orders if o.symbol != symbol]
+
+        for o in cancelled:
+            o.status = OrderStatus.CANCELED
+
+        n = before - len(self.pending_orders) - len(self.active_orders)
+        if n > 0:
+            print(f"[Broker] Cancelled {n} stale order(s) for {symbol} on state switch.")
+        return n
+
     # Keep compatibility if needed, or remove.
     # Since we are refactoring, I will remove execute_order to force updates.
