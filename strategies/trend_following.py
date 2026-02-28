@@ -13,7 +13,7 @@ class TrendUpStrategy(Strategy):
         sma_period: int = 30,
         sma_fast: int = 10,
         atr_period: int = 14,
-        atr_multiplier: float = 2.0,
+        atr_multiplier: float = 2.5,  # Issue4 fix: 2.0 → 2.5, wider stop for crypto volatility
     ):
         super().__init__("TrendUp", {MarketState.TREND_UP})
         self.sma_period = sma_period
@@ -51,12 +51,13 @@ class TrendUpStrategy(Strategy):
             return None
 
         close = df["close"].iloc[i]
+        close_prev = df["close"].iloc[i - 1]
         sma = df[self.col_sma].iloc[i]
         sma_prev = df[self.col_sma].iloc[i - 1]
 
         # Conditions
-        # 1. Close pull back to SMA (<= 1.005 * SMA)
-        cond_pullback = close <= sma * 1.005
+        # 1. Close pull back to SMA (Issue3 fix: ≤2% above SMA, was ≤0.5% — wider zone)
+        cond_pullback = close <= sma * 1.02
 
         # 2. SMA slope > 0
         slope = sma - sma_prev
@@ -66,7 +67,11 @@ class TrendUpStrategy(Strategy):
         sma_fast_val = df[self.col_sma_fast].iloc[i]
         cond_alignment = sma_fast_val > sma
 
-        if cond_pullback and cond_slope and cond_alignment:
+        # 4. Issue3 fix: Bounce confirmation — current close is already recovering,
+        #    not still falling into the SMA. Prevents entering at trend ends.
+        cond_bounce = close > close_prev
+
+        if cond_pullback and cond_slope and cond_alignment and cond_bounce:
             atr = df[self.col_atr].iloc[i]
             stop_loss = close - self.atr_multiplier * atr
 
@@ -94,9 +99,10 @@ class TrendUpStrategy(Strategy):
         sma = df[self.col_sma].iloc[i]
         atr = df[self.col_atr].iloc[i]
 
-        # 1. close < SMA
-        if close < sma:
-            return {"action": "sell", "reason": f"Close below SMA{self.sma_period}"}
+        # 1. close < SMA − 0.5×ATR  (Issue4 fix: ATR buffer prevents getting swept by noise,
+        #    was plain close < SMA which fired too easily in high-volatility crypto)
+        if close < sma - 0.5 * atr:
+            return {"action": "sell", "reason": f"Close below SMA{self.sma_period}-ATR"}
 
         # 2. state != TREND_UP
         if state not in self.allowed_states:
@@ -120,7 +126,7 @@ class TrendUpStrategy(Strategy):
 
 
 class TrendDownStrategy(Strategy):
-    def __init__(self, sma_period: int = 30, atr_period: int = 14, atr_multiplier: float = 2.0):
+    def __init__(self, sma_period: int = 30, atr_period: int = 14, atr_multiplier: float = 2.5):  # Issue4 fix: 2.0 → 2.5
         super().__init__("TrendDown", {MarketState.TREND_DOWN})
         self.sma_period = sma_period
         self.atr_period = atr_period
